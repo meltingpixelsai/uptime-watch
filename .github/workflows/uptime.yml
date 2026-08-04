@@ -1,0 +1,33 @@
+name: uptime
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: probe facesentry.com (retry-confirm before paging)
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          probe() { curl -s -o /dev/null -w '%{http_code}' --max-time 25 https://facesentry.com/ 2>/dev/null || true; }
+          c1=$(probe); c1=${c1:-000}
+          if [ "$c1" = "200" ]; then echo "up ($c1)"; exit 0; fi
+          echo "first probe returned $c1 — confirming in 60s (watchdogs retry-confirm before paging)"
+          sleep 60
+          c2=$(probe); c2=${c2:-000}
+          if [ "$c2" = "200" ]; then echo "recovered on confirm ($c2) — not paging"; exit 0; fi
+          echo "confirmed down ($c1 then $c2) — paging Telegram"
+          text="FACESENTRY.COM IS DOWN — external watch: HTTP $c1 then $c2 (two probes 60s apart) at $(date -u '+%Y-%m-%d %H:%M UTC'). This probe runs OFF the VPS (GitHub Actions), so the box itself may be unreachable too."
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="${TG_CHAT}" --data-urlencode text="$text" -o /dev/null || true
+          exit 1
