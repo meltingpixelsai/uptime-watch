@@ -1,0 +1,42 @@
+name: keepalive
+# GitHub switches off scheduled workflows in a public repository after 60 days without repository activity. It
+# switched the uptime probe off on 2026-10-09 (last push 2026-08-10), and nothing watched the sites from off the VPS
+# until it was switched back on 2026-10-29. Twice a month this job commits a timestamp to .keepalive (a commit is
+# repository activity, so the 60-day clock starts over) and switches the uptime workflow back on if it is off.
+# Twice, not once: GitHub skips scheduled runs under load (the 10-minute probe ran 3-6 times a day in October).
+# No third-party actions; a commit made with the workflow token starts no other workflow.
+on:
+  schedule:
+    - cron: "23 9 1,15 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: commit a timestamp + keep the uptime workflow on
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          stamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/contents/.keepalive" --jq .sha)
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/.keepalive" \
+            -f message="keepalive $stamp" \
+            -f content="$(printf '%s\n' "$stamp" | base64 -w0)" \
+            -f sha="$sha" --jq '"committed " + .commit.sha[0:7]'
+          state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/uptime.yml" --jq .state)
+          echo "uptime workflow: $state"
+          if [ "$state" != "active" ]; then
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/uptime.yml/enable"
+            echo "uptime workflow: switched back on"
+          fi
