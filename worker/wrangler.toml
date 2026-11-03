@@ -1,0 +1,18 @@
+name = "uptime-watch"
+main = "src/index.ts"
+compatibility_date = "2025-10-01"
+workers_dev = true
+
+# Every 2 minutes. The free plan allows 5 Cron Triggers per account; this Worker uses 1.
+[triggers]
+crons = ["*/2 * * * *"]
+
+# Per-site state (not secret). Created with: npx wrangler kv namespace create STATE
+[[kv_namespaces]]
+binding = "STATE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secrets (never in this file): npx wrangler secret put TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+
+[observability]
+enabled = true
