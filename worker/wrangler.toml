@@ -10,7 +10,7 @@ crons = ["*/2 * * * *"]
 # Per-site state (not secret). Created with: npx wrangler kv namespace create STATE
 [[kv_namespaces]]
 binding = "STATE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "b0ff79ccfb9e4463932856e57280c55c"
 
 # Secrets (never in this file): npx wrangler secret put TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
 
