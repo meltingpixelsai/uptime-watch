@@ -37,3 +37,25 @@ jobs:
             fail=1
           done
           exit $fail
+
+      # The Cloudflare Worker (worker/) is the 2-minute watch; this probe only runs when GitHub gets to it. Here it
+      # checks that the Worker is still running: its GET /status answers how long ago it last stored a run (at least
+      # every 10 min while healthy). Skipped until the repository variable WORKER_STATUS_URL is set.
+      - name: the Cloudflare watch is still running (retry-confirm before paging)
+        if: ${{ !cancelled() && vars.WORKER_STATUS_URL != '' }}
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATUS_URL: ${{ vars.WORKER_STATUS_URL }}
+        run: |
+          age() { curl -s --max-time 25 "$STATUS_URL" 2>/dev/null | jq -r '.ageSeconds // "none"' 2>/dev/null || true; }
+          fresh() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; [ "$1" -le 1500 ]; }
+          a1=$(age)
+          if fresh "$a1"; then echo "Cloudflare watch last ran ${a1}s ago"; exit 0; fi
+          echo "Cloudflare watch: last-run age '${a1:-none}' - confirming in 60s"
+          sleep 60
+          a2=$(age)
+          if fresh "$a2"; then echo "Cloudflare watch recovered on confirm (${a2}s)"; exit 0; fi
+          text="THE OFF-BOX WATCH IS NOT RUNNING: the Cloudflare Worker's last stored run is '${a2:-none}' seconds old (or it did not answer), checked twice 60s apart at $(date -u '+%Y-%m-%d %H:%M UTC'). Until it runs again, the sites are checked only when this GitHub probe runs."
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode chat_id="${TG_CHAT}" --data-urlencode text="$text" -o /dev/null || true
+          exit 1
